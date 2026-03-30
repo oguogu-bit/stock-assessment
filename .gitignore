@@ -1,0 +1,25 @@
+# 環境変数（APIキー等）
+.env
+
+# Python キャッシュ
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# データキャッシュ（大きくなるため）
+data/cache/
+
+# ログ（任意でコミット対象外に）
+logs/
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/

@@ -1,0 +1,71 @@
+name: Daily Stock Analysis
+
+# 実行トリガー設定
+on:
+  schedule:
+    # JST 15:35（東証大引け後）— 平日のみ（UTC 06:35）
+    - cron: '35 6 * * 1-5'
+    # JST 22:00（NY市場開場後）— 平日のみ（UTC 13:00）
+    - cron: '0 13 * * 1-5'
+  # 手動実行も可能（GitHub Actions の Run workflow ボタン）
+  workflow_dispatch:
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+
+    steps:
+      # リポジトリをチェックアウト
+      - name: リポジトリをチェックアウト
+        uses: actions/checkout@v4
+
+      # Python 3.12 をセットアップ
+      - name: Python 3.12 セットアップ
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # Node.js セットアップ（Claude Code CLI のインストールに必要）
+      - name: Node.js セットアップ
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Claude Code CLI のインストール
+      # ANTHROPIC_API_KEY は不要。Claude Pro / Max サブスクリプション枠で動作。
+      - name: Claude Code CLI インストール
+        run: npm install -g @anthropic-ai/claude-code
+
+      # Python 依存ライブラリのインストール
+      - name: Python 依存ライブラリインストール
+        run: pip install -r requirements.txt
+
+      # メイン分析の実行
+      - name: 日次アセスメント実行
+        run: python main.py --date today
+        env:
+          # 任意設定（Secrets に登録しておくと通知・NewsAPI が有効になる）
+          NEWS_API_KEY: ${{ secrets.NEWS_API_KEY }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          LINE_NOTIFY_TOKEN: ${{ secrets.LINE_NOTIFY_TOKEN }}
+
+      # 生成されたレポートとパターンDBをリポジトリにコミット・プッシュ
+      - name: レポートをリポジトリにコミット
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add reports/ data/news_patterns.csv logs/ || true
+          git commit -m "Daily report $(date +%Y-%m-%d)" || exit 0
+          git push
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Secrets 登録手順:
+#   GitHub リポジトリ → Settings → Secrets and variables → Actions
+#   → New repository secret で以下を登録（すべて任意）:
+#
+#   NEWS_API_KEY       : NewsAPI キー（https://newsapi.org/）
+#   SLACK_WEBHOOK_URL  : Slack Incoming Webhook URL
+#   LINE_NOTIFY_TOKEN  : LINE Notify トークン
+#
+#   ANTHROPIC_API_KEY の登録は不要です。
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

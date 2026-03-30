@@ -1,0 +1,9 @@
+yfinance>=0.2.40
+pandas>=2.0.0
+# pandas-ta は Python 3.14 非対応のため除外。テクニカル指標は pandas で手動計算。
+feedparser>=6.0.0
+plotly>=5.18.0
+python-dotenv>=1.0.0
+newsapi-python>=0.2.7
+requests>=2.31.0
+scipy>=1.11.0
