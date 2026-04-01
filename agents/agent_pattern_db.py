@@ -30,7 +30,20 @@ def _ensure_csv() -> pd.DataFrame:
         df.to_csv(config.PATTERNS_CSV, index=False, encoding='utf-8-sig')
 
     try:
-        return pd.read_csv(config.PATTERNS_CSV, encoding='utf-8-sig')
+        dtype_map = {
+            "date": str,
+            "news_headline": str,
+            "impact_category": str,
+            "predicted_direction": str,
+            "actual_direction": str,
+            "accuracy_label": str,
+        }
+        df = pd.read_csv(config.PATTERNS_CSV, encoding='utf-8-sig', dtype=dtype_map)
+        # 文字列列の NaN を空文字に統一
+        for col in ["predicted_direction", "actual_direction", "accuracy_label"]:
+            if col in df.columns:
+                df[col] = df[col].fillna("")
+        return df
     except Exception as e:
         logger.error(f"パターンDB読み込みエラー: {e}")
         return pd.DataFrame(columns=CSV_COLUMNS)
@@ -39,7 +52,7 @@ def _ensure_csv() -> pd.DataFrame:
 def _update_accuracy(df: pd.DataFrame, stocks_data: dict, fx_data: dict) -> pd.DataFrame:
     """前日の予測と当日実績を照合してaccuracy_labelを更新"""
     yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
-    mask = (df['date'] == yesterday) & (df['accuracy_label'].isna() | (df['accuracy_label'] == ''))
+    mask = (df['date'] == yesterday) & (df['accuracy_label'].astype(str).isin(['', 'nan', 'None']))
 
     if not mask.any():
         return df

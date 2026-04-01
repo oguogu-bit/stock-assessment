@@ -35,18 +35,49 @@ JSONのみ返答: [{{"id":"...","sentiment_score":0.0,"impact_category":"...","a
 
 
 def _fallback_scores(news_list: list) -> list:
-    """Claude CLI失敗時のフォールバック（中立スコアを付与）"""
-    return [
-        {
-            "id": art["id"],
-            "sentiment_score": 0.0,
-            "impact_category": "その他",
-            "affected_markets": [],
-            "impact_duration": "短期（1日）",
-            "confidence": 0.0,
-        }
-        for art in news_list
+    """Claude CLI失敗時のフォールバック（キーワードベースでスコアを付与）"""
+    POS = ['好調', '上昇', '増益', '好決算', '利下げ', '回復', '改善', '反発',
+           '買い', '強気', '最高', '最大', '突破', 'AI需要', '半導体好調']
+    NEG = ['下落', '減益', 'リスク', '懸念', '警戒', '悪化', '売り', '弱気',
+           '制裁', '規制', '紛争', '戦争', '利上げ', '景気後退', 'インフレ']
+    CAT_MAP = [
+        (['日銀', 'Fed', '金利', '利上げ', '利下げ', '金融政策'], '金融政策'),
+        (['決算', '売上', '利益', '増収', '減収', 'EPS'], '企業決算'),
+        (['GDP', 'CPI', '雇用', '物価', '景気', '貿易'], '経済指標'),
+        (['戦争', '紛争', '制裁', '地政学', '外交', '安保'], '地政学リスク'),
+        (['介入', '為替', '円安', '円高', 'ドル', 'FX'], '為替介入'),
+        (['AI', '半導体', 'NVIDIA', 'テクノロジー', '生成AI'], 'テクノロジー'),
+        (['原油', 'エネルギー', 'OPEC', '天然ガス'], 'エネルギー'),
     ]
+
+    results = []
+    for art in news_list:
+        text = (art.get('title', '') + ' ' + art.get('summary', ''))
+        score = sum(0.25 for kw in POS if kw in text) - sum(0.25 for kw in NEG if kw in text)
+        score = max(-1.0, min(1.0, score))
+
+        category = 'その他'
+        for keywords, cat in CAT_MAP:
+            if any(kw in text for kw in keywords):
+                category = cat
+                break
+
+        markets = []
+        if any(kw in text for kw in ['日経', '東証', 'TOPIX', '日本株']): markets.append('日本株')
+        if any(kw in text for kw in ['S&P', 'NASDAQ', 'NYSE', '米国株']): markets.append('米国株')
+        if any(kw in text for kw in ['ドル', '円', '為替', 'USD', 'JPY']): markets.append('ドル円')
+        if any(kw in text for kw in ['金', 'ゴールド', 'Gold']): markets.append('金')
+        if not markets: markets = ['日本株', '米国株']
+
+        results.append({
+            **art,
+            'sentiment_score': round(score, 2),
+            'impact_category': category,
+            'affected_markets': markets,
+            'impact_duration': '短期（1日）',
+            'confidence': 0.4,
+        })
+    return results
 
 
 def run(news_list: list) -> list:

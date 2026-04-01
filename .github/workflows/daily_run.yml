@@ -1,109 +1,77 @@
 name: Daily Stock Analysis
 
-# 実行トリガー設定
 on:
   schedule:
     # JST 15:35（東証大引け後）— 平日のみ（UTC 06:35）
     - cron: '35 6 * * 1-5'
     # JST 22:00（NY市場開場後）— 平日のみ（UTC 13:00）
     - cron: '0 13 * * 1-5'
-  # 手動実行も可能（GitHub Actions の Run workflow ボタン）
   workflow_dispatch:
 
 jobs:
   analyze:
     runs-on: ubuntu-latest
-    # GitHub Pages デプロイのために書き込み権限を付与
     permissions:
       contents: write
       pages: write
       id-token: write
 
     steps:
-      # リポジトリをチェックアウト
       - name: リポジトリをチェックアウト
         uses: actions/checkout@v4
 
-      # Python 3.12 をセットアップ
       - name: Python 3.12 セットアップ
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
-      # Node.js セットアップ（Claude Code CLI のインストールに必要）
       - name: Node.js セットアップ
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
-      # Claude Code CLI のインストール
-      # ANTHROPIC_API_KEY は不要。Claude Pro / Max サブスクリプション枠で動作。
       - name: Claude Code CLI インストール
         run: npm install -g @anthropic-ai/claude-code
 
-      # Python 依存ライブラリのインストール
       - name: Python 依存ライブラリインストール
         run: pip install -r requirements.txt
 
-      # メイン分析の実行
+      # ANTHROPIC_API_KEY 未設定でもテンプレート分析にフォールバックして動作する
       - name: 日次アセスメント実行
         run: python main.py --date today
         env:
-          # 任意設定（Secrets に登録しておくと通知・NewsAPI が有効になる）
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           NEWS_API_KEY: ${{ secrets.NEWS_API_KEY }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           LINE_NOTIFY_TOKEN: ${{ secrets.LINE_NOTIFY_TOKEN }}
-          # GitHub Pages のベースURL（LINE通知のリンクに使用）
           GITHUB_PAGES_URL: https://oguogu-bit.github.io/stock-assessment
 
-      # GitHub Pages 用の index.html を生成（最新レポートへのリダイレクト）
-      - name: GitHub Pages 用 index.html を生成
-        run: |
-          TODAY=$(date +%Y-%m-%d)
-          mkdir -p docs
-          # 最新レポートへ自動リダイレクトする index.html
-          cat > docs/index.html << EOF
-          <!DOCTYPE html>
-          <html lang="ja">
-          <head>
-            <meta charset="UTF-8">
-            <meta http-equiv="refresh" content="0; url=reports/${TODAY}.html">
-            <title>株式・為替 日次アセスメント — リダイレクト中...</title>
-          </head>
-          <body>
-            <p>最新レポート（${TODAY}）へリダイレクト中...</p>
-            <p><a href="reports/${TODAY}.html">こちらをクリック</a></p>
-          </body>
-          </html>
-          EOF
-          # reports/ を docs/reports/ にコピー（GitHub Pages はdocsフォルダから配信）
-          cp -r reports/ docs/reports/ 2>/dev/null || true
-          echo "✓ GitHub Pages ファイル生成完了"
+      # GitHub Pages 用ファイル生成（外部スクリプトに分離してYAMLエラーを回避）
+      - name: GitHub Pages ファイル生成
+        run: python scripts/build_pages.py $(date +%Y-%m-%d)
 
-      # 生成されたレポートとパターンDBをリポジトリにコミット・プッシュ
+      # レポートをコミット・プッシュ
       - name: レポートをリポジトリにコミット
         run: |
-          git config user.name "github-actions[bot]"
+          git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add reports/ docs/ data/news_patterns.csv logs/ || true
-          git commit -m "Daily report $(date +%Y-%m-%d)" || exit 0
+          git add reports/ docs/ data/news_patterns.csv logs/ 2>/dev/null || true
+          git diff --cached --quiet && echo "変更なし — スキップ" && exit 0
+          git commit -m "Daily report $(date +%Y-%m-%d)"
           git push
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # Secrets 登録手順:
 #   GitHub リポジトリ → Settings → Secrets and variables → Actions
-#   → New repository secret で以下を登録（すべて任意）:
+#   → New repository secret
 #
-#   NEWS_API_KEY       : NewsAPI キー（https://newsapi.org/）
-#   SLACK_WEBHOOK_URL  : Slack Incoming Webhook URL
-#   LINE_NOTIFY_TOKEN  : LINE Notify トークン（LINE でレポートURLを受け取れる）
+#   LINE_NOTIFY_TOKEN  : LINE Notify トークン（無料）
+#   NEWS_API_KEY       : NewsAPI キー（任意・ローカルのみ有効）
+#   SLACK_WEBHOOK_URL  : Slack Incoming Webhook（任意）
+#   ANTHROPIC_API_KEY  : Anthropic API キー（任意・設定すると Claude AI 分析が有効）
+#                        未設定でもテンプレート分析で動作します
 #
-#   ANTHROPIC_API_KEY の登録は不要です。
-#
-# GitHub Pages 設定手順:
-#   リポジトリ → Settings → Pages
-#   → Source: Deploy from a branch
-#   → Branch: main / docs フォルダ
-#   → Save
+# GitHub Pages:
+#   Settings → Pages → Branch: main / docs フォルダ → Save
 #   URL: https://oguogu-bit.github.io/stock-assessment/
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
